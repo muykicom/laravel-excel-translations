@@ -5,8 +5,8 @@ namespace Muyki\LaravelExcelTranslations;
 use Illuminate\Cache\CacheManager;
 use Illuminate\Support\Str;
 use Illuminate\Contracts\Cache\Repository;
-use InvalidArgumentException;
 use PhpOffice\PhpSpreadsheet\IOFactory;
+use Illuminate\Support\Facades\File;
 
 class LaravelExcelTranslationRegistrar
 {
@@ -34,11 +34,27 @@ class LaravelExcelTranslationRegistrar
 
     public function __construct(CacheManager $cacheManager)
     {
-        $this->data = $this->parseFile();
+        $this->parseFiles();
     }
 
-    public function parseFile () {
-        $spreadsheet = IOFactory::load(base_path('lang/translations.xlsx'));
+    public function parseFiles() {
+        $data = [];
+
+        $files = File::glob(base_path('lang/*.xlsx'));
+
+        $fileNames = array_map(function ($file) {
+            return ["file" => basename($file), "key" => pathinfo($file, PATHINFO_FILENAME)];
+        }, $files);
+
+        foreach ($fileNames as $f) {
+            $data[$f['key']] = $this->parseFile($f['file']);
+        }
+
+        $this->data = $data;
+    }
+
+    public function parseFile ($file) {
+        $spreadsheet = IOFactory::load(base_path('lang/'.$file));
         $sheet = $spreadsheet->getActiveSheet();
 
         $data = [];
@@ -70,42 +86,23 @@ class LaravelExcelTranslationRegistrar
         return $data;
     }
 
-    public function initializeCache()
-    {
-        self::$cacheExpirationTime = config('excel_translations.cache.expiration_time') ?: \DateInterval::createFromDateString('24 hours');
-
-        self::$cacheKey = config('excel_translations.cache.key');
-
-        $this->cache = $this->getCacheStoreFromConfig();
-    }
-
-    protected function getCacheStoreFromConfig(): Repository
-    {
-        $cacheDriver = config('excel_translations.cache.store', 'default');
-
-        if ($cacheDriver === 'default') {
-            return $this->cacheManager->store();
-        }
-
-        if (! \array_key_exists($cacheDriver, config('cache.stores'))) {
-            $cacheDriver = 'array';
-        }
-
-        return $this->cacheManager->store($cacheDriver);
-    }
-
-    public function get($key, array $replace = [], $locale = null, $fallback = true)
-    {
+    public function get($key, $locale = null) {
         $locale = $locale ?: config('app.locale');
 
-        if (!isset($this->data[$locale])) {
+        [$file, $key] = explode(".", $key, 2);
+
+        if (!isset($this->data[$file])) {
+            throw new \Exception("File \"$file\" not found!");
+        }
+
+        if (!isset($this->data[$file][$locale])) {
             throw new \Exception("Locale \"$locale\" not found!");
         }
 
-        if (!isset($this->data[$locale][$key])) {
+        if (!isset($this->data[$file][$locale][$key])) {
             throw new \Exception("Translation key \"$key\" not found!");
         }
 
-        return $this->data[$locale][$key];
+        return $this->data[$file][$locale][$key];
     }
 }
