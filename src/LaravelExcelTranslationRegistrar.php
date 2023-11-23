@@ -6,6 +6,8 @@ use Illuminate\Cache\CacheManager;
 use Illuminate\Support\Str;
 use Illuminate\Contracts\Cache\Repository;
 use InvalidArgumentException;
+use PhpOffice\PhpSpreadsheet\IOFactory;
+
 class LaravelExcelTranslationRegistrar
 {
     /**
@@ -21,16 +23,51 @@ class LaravelExcelTranslationRegistrar
     /** @var CacheManager */
     protected $cacheManager;
 
+    /** @var \DateInterval|int */
+    public static $cacheExpirationTime;
+
     /** @var string */
     public static $cacheKey;
 
+    /** @var array */
+    protected $data;
+
     public function __construct(CacheManager $cacheManager)
     {
-        $this->cacheManager = $cacheManager;
+        $this->data = $this->parseFile();
+    }
 
-        $this->setLocale(config('app.locale'));
+    public function parseFile () {
+        $spreadsheet = IOFactory::load(base_path('lang/translations.xlsx'));
+        $sheet = $spreadsheet->getActiveSheet();
 
-        $this->initializeCache();
+        $data = [];
+
+        // Get the highest row and column numbers
+        $highestRow = $sheet->getHighestRow();
+        $highestColumn = $sheet->getHighestColumn();
+
+        // Iterate through each row (except the first one with headers)
+        for ($row = 2; $row <= $highestRow; $row++) {
+            // Get key from the first column
+            $key = $sheet->getCell('A' . $row)->getValue();
+
+            // Iterate through the languages (columns starting from the second column)
+            for ($col = 'B'; $col <= $highestColumn; $col++) {
+                $language = $sheet->getCell($col . '1')->getValue();
+                $translation = $sheet->getCell($col . $row)->getValue();
+
+                // If the language array doesn't exist, create it
+                if (!isset($data[$language])) {
+                    $data[$language] = [];
+                }
+
+                // Set the translation for the corresponding language and key
+                $data[$language][$key] = $translation;
+            }
+        }
+
+        return $data;
     }
 
     public function initializeCache()
@@ -57,17 +94,18 @@ class LaravelExcelTranslationRegistrar
         return $this->cacheManager->store($cacheDriver);
     }
 
-    public function setLocale($locale)
-    {
-        if (Str::contains($locale, ['/', '\\'])) {
-            throw new InvalidArgumentException('Invalid characters present in locale.');
-        }
-
-        $this->locale = $locale;
-    }
-
     public function get($key, array $replace = [], $locale = null, $fallback = true)
     {
-        return $locale ?: $this->locale;
+        $locale = $locale ?: config('app.locale');
+
+        if (!isset($this->data[$locale])) {
+            throw new \Exception("Locale \"$locale\" not found!");
+        }
+
+        if (!isset($this->data[$locale][$key])) {
+            throw new \Exception("Translation key \"$key\" not found!");
+        }
+
+        return $this->data[$locale][$key];
     }
 }
