@@ -47,7 +47,9 @@ class LaravelExcelTranslationRegistrar
         }, $files);
 
         foreach ($fileNames as $f) {
-            $data[$f['key']] = $this->parseFile($f['file']);
+            if (!str_contains($f['file'], '~$')){
+                $data[$f['key']] = $this->parseFile($f['file']);
+            }
         }
 
         $this->data = $data;
