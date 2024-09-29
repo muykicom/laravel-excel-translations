@@ -7,6 +7,10 @@ use Illuminate\Support\Str;
 use Illuminate\Contracts\Cache\Repository;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use Illuminate\Support\Facades\File;
+use PhpOffice\PhpSpreadsheet\Reader\Csv;
+use PhpOffice\PhpSpreadsheet\Reader\Xlsx;
+use PhpOffice\PhpSpreadsheet\Reader\Xls;
+
 
 class LaravelExcelTranslationRegistrar
 {
@@ -40,7 +44,11 @@ class LaravelExcelTranslationRegistrar
     public function parseFiles() {
         $data = [];
 
-        $files = File::glob(base_path('lang/*.xlsx'));
+        $files = array_merge(
+            File::glob(base_path('lang/*.csv')),
+            File::glob(base_path('lang/*.xls')),
+            File::glob(base_path('lang/*.xlsx'))
+        );
 
         $fileNames = array_map(function ($file) {
             return ["file" => basename($file), "key" => pathinfo($file, PATHINFO_FILENAME)];
@@ -56,7 +64,19 @@ class LaravelExcelTranslationRegistrar
     }
 
     public function parseFile ($file) {
-        $spreadsheet = IOFactory::load(base_path('lang/'.$file));
+
+        $filePath = base_path('lang/' . $file);
+        $extension = pathinfo($filePath, PATHINFO_EXTENSION);
+
+        $reader = match ($extension) {
+            'csv' => new Csv(),   
+            'xls' => new Xls(),
+            'xlsx' => new Xlsx(),
+            default => throw new \Exception('Unsupported file format'),
+        };
+
+        $spreadsheet =  $reader->load($filePath); 
+        
         $sheet = $spreadsheet->getActiveSheet();
 
         $data = [];
