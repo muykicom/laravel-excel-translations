@@ -5,8 +5,16 @@ namespace Muyki\LaravelExcelTranslations;
 use Illuminate\Cache\CacheManager;
 use Illuminate\Support\Str;
 use Illuminate\Contracts\Cache\Repository;
+use Muyki\LaravelExcelTranslations\Exceptions\FileNotFoundException;
+use Muyki\LaravelExcelTranslations\Exceptions\LocaleNotFoundException;
+use Muyki\LaravelExcelTranslations\Exceptions\TranslationKeyNotFoundException;
+use Muyki\LaravelExcelTranslations\Exceptions\UnsupportedFileFormatException;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use Illuminate\Support\Facades\File;
+use PhpOffice\PhpSpreadsheet\Reader\Csv;
+use PhpOffice\PhpSpreadsheet\Reader\Xlsx;
+use PhpOffice\PhpSpreadsheet\Reader\Xls;
+
 
 class LaravelExcelTranslationRegistrar
 {
@@ -40,7 +48,11 @@ class LaravelExcelTranslationRegistrar
     public function parseFiles() {
         $data = [];
 
-        $files = File::glob(base_path('lang/*.xlsx'));
+        $files = array_merge(
+            File::glob(base_path('lang/*.csv')),
+            File::glob(base_path('lang/*.xls')),
+            File::glob(base_path('lang/*.xlsx'))
+        );
 
         $fileNames = array_map(function ($file) {
             return ["file" => basename($file), "key" => pathinfo($file, PATHINFO_FILENAME)];
@@ -56,7 +68,20 @@ class LaravelExcelTranslationRegistrar
     }
 
     public function parseFile ($file) {
-        $spreadsheet = IOFactory::load(base_path('lang/'.$file));
+
+        $filePath = base_path('lang/' . $file);
+
+        $extension = pathinfo($filePath, PATHINFO_EXTENSION);
+
+        $reader = match ($extension) {
+            'csv' => new Csv(),   
+            'xls' => new Xls(),
+            'xlsx' => new Xlsx(),
+            default => throw new UnsupportedFileFormatException($extension),
+        };
+
+        $spreadsheet =  $reader->load($filePath); 
+        
         $sheet = $spreadsheet->getActiveSheet();
 
         $data = [];
@@ -94,17 +119,18 @@ class LaravelExcelTranslationRegistrar
         [$file, $key] = explode(".", $key, 2);
 
         if (!isset($this->data[$file])) {
-            throw new \Exception("File \"$file\" not found!");
+            throw new FileNotFoundException($file);
         }
 
         if (!isset($this->data[$file][$locale])) {
-            throw new \Exception("Locale \"$locale\" not found!");
+            throw new LocaleNotFoundException($locale);
         }
 
         if (!isset($this->data[$file][$locale][$key])) {
-            throw new \Exception("Translation key \"$key\" not found!");
+            throw new TranslationKeyNotFoundException($key);
         }
 
         return $this->data[$file][$locale][$key];
     }
+
 }

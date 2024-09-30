@@ -11,6 +11,10 @@ class LaravelExcelTranslationServiceProvider extends ServiceProvider
         $this->app->singleton(LaravelExcelTranslationRegistrar::class, function ($app) use ($laravelExcelTranslationsRegistrar) {
             return $laravelExcelTranslationsRegistrar;
         });
+
+        $this->publishes([
+            __DIR__.'/../config/excel_translations.php' => config_path('excel_translations.php'),
+        ], 'config');
     }
 
     public function register()
