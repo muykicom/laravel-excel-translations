@@ -5,6 +5,10 @@ namespace Muyki\LaravelExcelTranslations;
 use Illuminate\Cache\CacheManager;
 use Illuminate\Support\Str;
 use Illuminate\Contracts\Cache\Repository;
+use Muyki\LaravelExcelTranslations\Exceptions\FileNotFoundException;
+use Muyki\LaravelExcelTranslations\Exceptions\LocaleNotFoundException;
+use Muyki\LaravelExcelTranslations\Exceptions\TranslationKeyNotFoundException;
+use Muyki\LaravelExcelTranslations\Exceptions\UnsupportedFileFormatException;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use Illuminate\Support\Facades\File;
 use PhpOffice\PhpSpreadsheet\Reader\Csv;
@@ -66,13 +70,14 @@ class LaravelExcelTranslationRegistrar
     public function parseFile ($file) {
 
         $filePath = base_path('lang/' . $file);
+
         $extension = pathinfo($filePath, PATHINFO_EXTENSION);
 
         $reader = match ($extension) {
             'csv' => new Csv(),   
             'xls' => new Xls(),
             'xlsx' => new Xlsx(),
-            default => throw new \Exception('Unsupported file format'),
+            default => throw new UnsupportedFileFormatException($extension),
         };
 
         $spreadsheet =  $reader->load($filePath); 
@@ -114,17 +119,18 @@ class LaravelExcelTranslationRegistrar
         [$file, $key] = explode(".", $key, 2);
 
         if (!isset($this->data[$file])) {
-            throw new \Exception("File \"$file\" not found!");
+            throw new FileNotFoundException($file);
         }
 
         if (!isset($this->data[$file][$locale])) {
-            throw new \Exception("Locale \"$locale\" not found!");
+            throw new LocaleNotFoundException($locale);
         }
 
         if (!isset($this->data[$file][$locale][$key])) {
-            throw new \Exception("Translation key \"$key\" not found!");
+            throw new TranslationKeyNotFoundException($key);
         }
 
         return $this->data[$file][$locale][$key];
     }
+
 }
