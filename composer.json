@@ -19,9 +19,8 @@
     "homepage": "https://muyki.com",
     "require": {
         "php": "^8.0",
+        "aws/aws-sdk-php": "^3.322",
         "phpoffice/phpspreadsheet": "^1.28"
-    },
-    "require-dev": {
     },
     "minimum-stability": "dev",
     "prefer-stable": false,
