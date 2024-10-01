@@ -15,6 +15,12 @@ class LaravelExcelTranslationServiceProvider extends ServiceProvider
         $this->publishes([
             __DIR__.'/../config/excel_translations.php' => config_path('excel_translations.php'),
         ], 'config');
+
+        if ($this->app->runningInConsole()) {
+            $this->commands([
+                \Muyki\LaravelExcelTranslations\Console\Commands\TranslateExcelTranslations::class,
+            ]);
+        }
     }
 
     public function register()
