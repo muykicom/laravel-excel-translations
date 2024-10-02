@@ -3,6 +3,8 @@
 namespace Muyki\LaravelExcelTranslations;
 
 use Illuminate\Support\ServiceProvider;
+use Muyki\LaravelExcelTranslations\Console\Commands\CreateTranslationFileCommand;
+use Muyki\LaravelExcelTranslations\Console\Commands\TranslateExcelTranslations;
 
 class LaravelExcelTranslationServiceProvider extends ServiceProvider
 {
@@ -15,6 +17,13 @@ class LaravelExcelTranslationServiceProvider extends ServiceProvider
         $this->publishes([
             __DIR__.'/../config/excel_translations.php' => config_path('excel_translations.php'),
         ], 'config');
+
+        if ($this->app->runningInConsole()) {
+            $this->commands([
+               // TranslateExcelTranslations::class,
+                CreateTranslationFileCommand::class
+            ]);
+        }
     }
 
     public function register()

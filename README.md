@@ -31,7 +31,56 @@ php artisan vendor:publish --provider="Muyki\LaravelExcelTranslations\LaravelExc
 
 ## Usage
 
-1. **Prepare Language Files**:
+
+### **Creating a New Translation File**
+
+To create a new translation file, you can use the following command:
+
+```bash
+php artisan excel-translations:create
+```
+
+#### Example usage:
+
+```bash
+php artisan excel-translations:create
+```
+
+- You will be prompted to enter the file name, file format, and the languages.
+
+    ```
+    Enter the file name:
+    > Default
+
+    Select the file format [csv]:
+    [0] csv
+    [1] xls
+    [2] xlsx
+    > 2
+
+    Enter the languages (comma-separated):
+    > en
+
+    Default.xlsx file already exists. Do you want to overwrite it? (yes/no) [no]:
+    > no
+
+    Operation cancelled.
+    ```
+
+#### Additional options:
+
+You can also specify the file name, format, and languages directly in the command:
+
+```bash
+php artisan excel-translations:create translations --format=xlsx --languages=en,fr,de
+```
+
+- `--format` option: Specify the file format (`csv`, `xls`, `xlsx`).
+- `--languages` option: Specify the languages as a comma-separated list (e.g., `en,fr,de`).
+
+### **OR**
+
+### **Prepare Language Files**:
 
    Place your translation files in the lang directory. Supported file formats:
     - .csv
