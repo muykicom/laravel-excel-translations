@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="laravel-excel-translations.png" alt="Laravel Excel Translations">
+</p>
+
 # laravel-excel-translations
 
 Laravel Excel Translations Package
