@@ -33,6 +33,11 @@ if (! function_exists('__e')) {
                 return "Translation key \"$key\" not found!";
             }
 
+            if(is_string($replace)){
+                $locale = $replace;
+                $replace = [];
+            }
+
             return app(\Muyki\LaravelExcelTranslations\LaravelExcelTranslationRegistrar::class)->get($key, $replace, $locale);
 
         }

@@ -14,6 +14,8 @@ use Illuminate\Support\Facades\File;
 use PhpOffice\PhpSpreadsheet\Reader\Csv;
 use PhpOffice\PhpSpreadsheet\Reader\Xlsx;
 use PhpOffice\PhpSpreadsheet\Reader\Xls;
+use Illuminate\Support\Facades\Log;
+
 
 
 class LaravelExcelTranslationRegistrar
@@ -40,13 +42,29 @@ class LaravelExcelTranslationRegistrar
     /** @var array */
     protected $data;
 
+    protected $translations = null;
+
     public function __construct(CacheManager $cacheManager)
     {
-        $this->parseFiles();
+       // $this->parseFiles();
     }
 
-    public function parseFiles() {
+    protected function loadTranslationsIfNeeded()
+    {
+        if ($this->translations === null) {
+            $this->translations = $this->parseFiles();
+        }
+    }
+
+    public function parseFiles()
+    {
         $data = [];
+
+        $langPath = base_path('lang');
+
+        if (!File::exists($langPath)) {
+            return $data;
+        }
 
         $files = array_merge(
             File::glob(base_path('lang/*.csv')),
@@ -54,83 +72,136 @@ class LaravelExcelTranslationRegistrar
             File::glob(base_path('lang/*.xlsx'))
         );
 
-        $fileNames = array_map(function ($file) {
-            return ["file" => basename($file), "key" => pathinfo($file, PATHINFO_FILENAME)];
-        }, $files);
+        foreach ($files as $filePath) {
 
-        foreach ($fileNames as $f) {
-            if (!str_contains($f['file'], '~$')){
-                $data[$f['key']] = $this->parseFile($f['file']);
+            //temprory file skip
+            if (str_contains(basename($filePath), '~$'))
+            {
+                continue;
             }
-        }
 
-        $this->data = $data;
-    }
+            $fileName = pathinfo($filePath, PATHINFO_FILENAME);
 
-    public function parseFile ($file) {
-
-        $filePath = base_path('lang/' . $file);
-
-        $extension = pathinfo($filePath, PATHINFO_EXTENSION);
-
-        $reader = match ($extension) {
-            'csv' => new Csv(),   
-            'xls' => new Xls(),
-            'xlsx' => new Xlsx(),
-            default => throw new UnsupportedFileFormatException($extension),
-        };
-
-        $spreadsheet =  $reader->load($filePath); 
-        
-        $sheet = $spreadsheet->getActiveSheet();
-
-        $data = [];
-
-        // Get the highest row and column numbers
-        $highestRow = $sheet->getHighestRow();
-        $highestColumn = $sheet->getHighestColumn();
-
-        // Iterate through each row (except the first one with headers)
-        for ($row = 2; $row <= $highestRow; $row++) {
-            // Get key from the first column
-            $key = $sheet->getCell('A' . $row)->getValue();
-
-            // Iterate through the languages (columns starting from the second column)
-            for ($col = 'B'; $col <= $highestColumn; $col++) {
-                $language = $sheet->getCell($col . '1')->getValue();
-                $translation = $sheet->getCell($col . $row)->getValue();
-
-                // If the language array doesn't exist, create it
-                if (!isset($data[$language])) {
-                    $data[$language] = [];
-                }
-
-                // Set the translation for the corresponding language and key
-                $data[$language][$key] = $translation;
+            try {
+                $data[$fileName] = $this->parseFile($filePath);
+            } catch (\Throwable $e) {
+                Log::warning("Translation file could not be parsed: {$filePath}", [
+                    'error' => $e->getMessage()
+                ]);
             }
         }
 
         return $data;
     }
 
-    public function get($key, $locale = null) {
-        $locale = $locale ?: config('app.locale');
+    public function parseFile ($filePath)
+    {
+        $extension = pathinfo($filePath, PATHINFO_EXTENSION);
 
-        [$file, $key] = explode(".", $key, 2);
+        $reader = match ($extension) {
+            'csv' => new Csv(),
+            'xls' => new Xls(),
+            'xlsx' => new Xlsx(),
+            default => throw new UnsupportedFileFormatException($extension),
+        };
 
-        if (!isset($this->data[$file])) {
-            throw new FileNotFoundException($file);
+        $spreadsheet =  $reader->load($filePath);
+
+        $sheet = $spreadsheet->getActiveSheet();
+
+        $data = [];
+
+        $highestRow = $sheet->getHighestRow();
+        $highestColumn = $sheet->getHighestColumn();
+
+        $languages = [];
+
+        for ($col = 'B'; $col <= $highestColumn; $col++) {
+            $language = $sheet->getCell($col . '1')->getValue();
+
+            if(!empty($language))
+            {
+                $languages[$col] = trim($language);
+            }
         }
 
-        if (!isset($this->data[$file][$locale])) {
-            throw new LocaleNotFoundException($locale);
+        for($row = 2; $row <= $highestRow; $row++)
+        {
+            $key = $sheet->getCell('A' . $row)->getValue();
+
+            if(empty($key)){
+                continue;
+            }
+
+            $key = trim($key);
+
+            foreach($languages as $col => $language){
+                $translation = $sheet->getCell($col . $row)->getValue();
+
+                if(!isset($data[$language])) {
+                    $data[$language] = [];
+                }
+
+                $data[$language][$key] = $translation ?? '';
+            }
+
         }
 
-        if (!isset($this->data[$file][$locale][$key])) {
+        return $data;
+    }
+
+    public function get($key, $replace = [], $locale = null)
+    {
+
+        $this->loadTranslationsIfNeeded();
+
+        $locale = $locale ?: config('app.locale','en');
+
+        $parts = explode('.', $key, 2);
+
+        if(count($parts) !== 2) {
             throw new TranslationKeyNotFoundException($key);
         }
 
-        return $this->data[$file][$locale][$key];
+        [$file, $translationKey] = $parts;
+
+        if (!isset($this->translations[$file])) {
+            throw new FileNotFoundException($file);
+        }
+
+        if(!isset($this->translations[$file][$locale])){
+            $fallbackLocale = config('app.fallback_locale','en');
+
+            if (!isset($this->translations[$file][$fallbackLocale])) {
+                throw new LocaleNotFoundException($locale);
+            }
+
+            $locale = $fallbackLocale;
+        }
+
+        if (!isset($this->translations[$file][$locale][$translationKey])) {
+            throw new TranslationKeyNotFoundException($translationKey);
+        }
+
+        $translation = $this->translations[$file][$locale][$translationKey];
+
+        if (!empty($replace) && is_array($replace)) {
+            foreach ($replace as $replaceKey => $value) {
+                $translation = str_replace(
+                    [':' . $replaceKey, ':' . strtoupper($replaceKey), ':' . ucfirst($replaceKey)],
+                    [$value, strtoupper($value), ucfirst($value)],
+                    $translation
+                );
+            }
+        }
+
+        return $translation;
+    }
+
+    public function refresh()
+    {
+        $this->translations = null;
+        $this->loadTranslationsIfNeeded();
     }
 
 }
