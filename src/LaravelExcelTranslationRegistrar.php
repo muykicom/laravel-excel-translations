@@ -2,14 +2,11 @@
 
 namespace Muyki\LaravelExcelTranslations;
 
-use Illuminate\Cache\CacheManager;
-use Illuminate\Support\Str;
-use Illuminate\Contracts\Cache\Repository;
+use Illuminate\Support\Facades\Cache;
 use Muyki\LaravelExcelTranslations\Exceptions\FileNotFoundException;
 use Muyki\LaravelExcelTranslations\Exceptions\LocaleNotFoundException;
 use Muyki\LaravelExcelTranslations\Exceptions\TranslationKeyNotFoundException;
 use Muyki\LaravelExcelTranslations\Exceptions\UnsupportedFileFormatException;
-use PhpOffice\PhpSpreadsheet\IOFactory;
 use Illuminate\Support\Facades\File;
 use PhpOffice\PhpSpreadsheet\Reader\Csv;
 use PhpOffice\PhpSpreadsheet\Reader\Xlsx;
@@ -20,42 +17,152 @@ use Illuminate\Support\Facades\Log;
 
 class LaravelExcelTranslationRegistrar
 {
-    /**
-     * The default locale being used by the translator.
-     *
-     * @var string
-     */
-    protected $locale;
-
-    /** @var Repository */
-    protected $cache;
-
-    /** @var CacheManager */
-    protected $cacheManager;
-
-    /** @var \DateInterval|int */
-    public static $cacheExpirationTime;
-
-    /** @var string */
-    public static $cacheKey;
-
-    /** @var array */
-    protected $data;
 
     protected $translations = null;
 
-    public function __construct(CacheManager $cacheManager)
+    protected $locale;
+
+
+    protected $cacheEnabled;
+    protected $cacheKey;
+    protected $cacheExpiration;
+
+
+    public function __construct()
     {
-       // $this->parseFiles();
+       // Cache get config
+       $this->cacheEnabled = config('laravel-excel-translations.cache_enabled', true);
+       $this->cacheKey = config('laravel-excel-translations.cache_key', 'excel-translations');
+       $this->cacheExpiration = config('laravel-excel-translations.cache.expiration_time',86400 ); // 24 Hour
     }
 
-    protected function loadTranslationsIfNeeded()
+    public function loadTranslationsIfNeeded()
     {
-        if ($this->translations === null) {
-            $this->translations = $this->parseFiles();
+        if ($this->translations !== null) {
+            return;
+        }
+
+        if ($this->cacheEnabled){
+            $this->translations = $this->getFromCache();
+
+            if ($this->translations !== null) {
+                return;
+            }
+        }
+
+        $this->translations = $this->parseFiles();
+
+        if ($this->cacheEnabled && $this->translations !== null) {
+            $this->putToCache($this->translations);
         }
     }
 
+    protected function getFromCache()
+    {
+        try {
+            $locale = config('app.locale','en');
+            $cacheKey = $this->getCacheKey($locale);
+
+            $data = Cache::get($cacheKey);
+
+            if ($data !== null) {
+                Log::debug('Translations loaded from cache', [
+                    'key' => $cacheKey
+                ]);
+            }
+
+            return $data;
+        }catch (\Exception $e){
+            Log::warning('Cache Read Failed.',[
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+    }
+
+    protected function putToCache($data)
+    {
+        try {
+            $locale = config('app.locale','en');
+            $cacheKey = $this->getCacheKey($locale);
+
+            $expiration = $this->getCacheExpration();
+
+            Cache::put($cacheKey, $data, $expiration);
+
+            Log::debug('Translations saved to cache', [
+                'key' => $cacheKey,
+                'expiration' => $expiration
+            ]);
+
+        }catch (\Exception $e){
+            Log::warning('Cache write failed', [
+                'error' => $e->getMessage()
+            ]);
+        }
+    }
+
+
+    protected function getCacheKey($locale = null)
+    {
+        $locale = $locale ?: config('app.locale','en');
+
+        $filesHash = $this->getFilesHash();
+
+        return sprintf('%s.%s.%s',
+            $this->cacheKey,
+            $locale,
+            $filesHash
+        );
+    }
+
+    protected function getFilesHash()
+    {
+        $langPath = base_path('lang');
+
+        if(!File::exists($langPath)){
+            return 'no-files';
+        }
+
+        $files = array_merge(
+            File::glob($langPath . '/*.csv'),
+            File::glob($langPath . '/*.xls'),
+            File::glob($langPath . '/*.xlsx')
+        );
+
+        $hashData = [];
+        foreach ($files as $file) {
+
+            if (str_contains(basename($file), '~$')){
+                continue;
+            }
+
+            $hashData[] = basename($file) . ':' . File::lastModified($file);
+        }
+
+        return md5(implode('|', $hashData));
+
+    }
+
+    protected function getCacheExpration()
+    {
+        $expiration = $this->cacheExpiration;
+
+        if(is_string($expiration)){
+            try {
+                $interval =  \DateInterval::createFromDateString($expiration);
+                $now = new \DateTime();
+                $future = clone $now;
+                $future->add($interval);
+                $expiration = $future->getTimestamp() - $now->getTimestamp();
+            } catch (\Exception $e){
+                return 86400; // Default 24 Hour
+            }
+        }
+
+        return (int) $expiration;
+    }
     public function parseFiles()
     {
         $data = [];
@@ -198,9 +305,27 @@ class LaravelExcelTranslationRegistrar
         return $translation;
     }
 
-    public function refresh()
+    public function clearCache()
     {
         $this->translations = null;
+
+        if($this->cacheEnabled){
+            try {
+                $pattern = $this->cacheKey . '.*';
+                Cache::forget($pattern);
+
+                Log::info('Translations cleared from cache');
+            }catch (\Exception $e){
+                Log::warning('Cache clear failed', [
+                    'error' => $e->getMessage()
+                ]);
+            }
+        }
+    }
+
+    public function refresh()
+    {
+        $this->clearCache();
         $this->loadTranslationsIfNeeded();
     }
 
