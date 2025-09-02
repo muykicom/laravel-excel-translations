@@ -3,6 +3,7 @@
 namespace Muyki\LaravelExcelTranslations;
 
 use Illuminate\Support\ServiceProvider;
+use Muyki\LaravelExcelTranslations\Console\Commands\ClearTranslationCacheCommand;
 use Muyki\LaravelExcelTranslations\Console\Commands\CreateTranslationFileCommand;
 use Muyki\LaravelExcelTranslations\Console\Commands\TranslateExcelTranslations;
 
@@ -21,7 +22,8 @@ class LaravelExcelTranslationServiceProvider extends ServiceProvider
         if ($this->app->runningInConsole()) {
             $this->commands([
                // TranslateExcelTranslations::class,
-                CreateTranslationFileCommand::class
+                CreateTranslationFileCommand::class,
+                ClearTranslationCacheCommand::class,
             ]);
         }
     }
