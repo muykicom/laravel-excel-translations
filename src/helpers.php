@@ -1,5 +1,8 @@
 <?php
 
+use Muyki\LaravelExcelTranslations\Contracts\TranslationRepositoryInterface;
+
+
 if (! function_exists('__e')) {
     /**
      * Translate the given message.
@@ -30,7 +33,7 @@ if (! function_exists('__e')) {
         function e_trans($key = null, $replace = [], $locale = null)
         {
             if (is_null($key)) {
-                return "Translation key \"$key\" not found!";
+                return '[MISSING]: null key';
             }
 
             if(is_string($replace)){
@@ -38,8 +41,33 @@ if (! function_exists('__e')) {
                 $replace = [];
             }
 
-            return app(\Muyki\LaravelExcelTranslations\LaravelExcelTranslationRegistrar::class)->get($key, $replace, $locale);
+            try {
+                $repository = app(TranslationRepositoryInterface::class);
+                return $repository->getTranslation($key, $replace, $locale);
+            }catch (Exception $e){
+                if (config('app.debug')) {
+                    return "[ERROR]: {$e->getMessage()}";
+                }
 
+                return "[MISSING]: {$key}";
+            }
+        }
+    }
+}
+
+if (!function_exists('e_trans_has')) {
+    /**
+     * @param string $key
+     * @param string|null $locale
+     * @return bool
+     */
+    function e_trans_has($key, $locale = null)
+    {
+        try {
+            $repository = app(TranslationRepositoryInterface::class);
+            return $repository->has($key, $locale);
+        } catch (\Exception $e) {
+            return false;
         }
     }
 }

@@ -2,9 +2,21 @@
 
 return [
     'cache' => [
-        'expiration_time' => \DateInterval::createFromDateString('24 hours'),
-        'key' => 'muyki.excel_translations.cache',
-        'store' => 'default',
+        'enabled' => env('EXCEL_TRANSLATIONS_CACHE_ENABLED', true),
+        'expiration_time' => env('EXCEL_TRANSLATIONS_CACHE_TIME', 86400), // 24 Hour
+        'key' => 'excel_translations',
+        'store' => env('EXCEL_TRANSLATIONS_CACHE_STORE', null),
+    ],
+
+    'files' => [
+        'path' => env('EXCEL_TRANSLATIONS_PATH', base_path('lang')),
+        'formats' => ['csv', 'xls', 'xlsx'],
+        'ignore_patterns' => ['~$', '.tmp'],
+    ],
+
+    'translations' => [
+        'default_locale' => env('EXCEL_TRANSLATIONS_LOCALE', config('app.locale', 'en')),
+        'fallback_locale' => env('EXCEL_TRANSLATIONS_FALLBACK', config('app.fallback_locale', 'en')),
     ],
 
     'aws' => [
