@@ -2,135 +2,61 @@
 
 namespace Muyki\LaravelExcelTranslations;
 
-use Illuminate\Cache\CacheManager;
-use Illuminate\Support\Str;
-use Illuminate\Contracts\Cache\Repository;
+use Illuminate\Support\Facades\Cache;
+use Muyki\LaravelExcelTranslations\Contracts\FileParserInterface;
+use Muyki\LaravelExcelTranslations\Contracts\TranslationRepositoryInterface;
 use Muyki\LaravelExcelTranslations\Exceptions\FileNotFoundException;
 use Muyki\LaravelExcelTranslations\Exceptions\LocaleNotFoundException;
 use Muyki\LaravelExcelTranslations\Exceptions\TranslationKeyNotFoundException;
 use Muyki\LaravelExcelTranslations\Exceptions\UnsupportedFileFormatException;
-use PhpOffice\PhpSpreadsheet\IOFactory;
 use Illuminate\Support\Facades\File;
 use PhpOffice\PhpSpreadsheet\Reader\Csv;
 use PhpOffice\PhpSpreadsheet\Reader\Xlsx;
 use PhpOffice\PhpSpreadsheet\Reader\Xls;
+use Illuminate\Support\Facades\Log;
+
 
 
 class LaravelExcelTranslationRegistrar
 {
-    /**
-     * The default locale being used by the translator.
-     *
-     * @var string
-     */
-    protected $locale;
 
-    /** @var Repository */
-    protected $cache;
+    protected TranslationRepositoryInterface $repository;
 
-    /** @var CacheManager */
-    protected $cacheManager;
-
-    /** @var \DateInterval|int */
-    public static $cacheExpirationTime;
-
-    /** @var string */
-    public static $cacheKey;
-
-    /** @var array */
-    protected $data;
-
-    public function __construct(CacheManager $cacheManager)
+    public function __construct()
     {
-        $this->parseFiles();
+        $this->repository = app(TranslationRepositoryInterface::class);
     }
 
-    public function parseFiles() {
-        $data = [];
-
-        $files = array_merge(
-            File::glob(base_path('lang/*.csv')),
-            File::glob(base_path('lang/*.xls')),
-            File::glob(base_path('lang/*.xlsx'))
-        );
-
-        $fileNames = array_map(function ($file) {
-            return ["file" => basename($file), "key" => pathinfo($file, PATHINFO_FILENAME)];
-        }, $files);
-
-        foreach ($fileNames as $f) {
-            if (!str_contains($f['file'], '~$')){
-                $data[$f['key']] = $this->parseFile($f['file']);
-            }
-        }
-
-        $this->data = $data;
+    public function loadTranslationsIfNeeded()
+    {
+       // use repository
+       return;
     }
 
-    public function parseFile ($file) {
-
-        $filePath = base_path('lang/' . $file);
-
-        $extension = pathinfo($filePath, PATHINFO_EXTENSION);
-
-        $reader = match ($extension) {
-            'csv' => new Csv(),   
-            'xls' => new Xls(),
-            'xlsx' => new Xlsx(),
-            default => throw new UnsupportedFileFormatException($extension),
-        };
-
-        $spreadsheet =  $reader->load($filePath); 
-        
-        $sheet = $spreadsheet->getActiveSheet();
-
-        $data = [];
-
-        // Get the highest row and column numbers
-        $highestRow = $sheet->getHighestRow();
-        $highestColumn = $sheet->getHighestColumn();
-
-        // Iterate through each row (except the first one with headers)
-        for ($row = 2; $row <= $highestRow; $row++) {
-            // Get key from the first column
-            $key = $sheet->getCell('A' . $row)->getValue();
-
-            // Iterate through the languages (columns starting from the second column)
-            for ($col = 'B'; $col <= $highestColumn; $col++) {
-                $language = $sheet->getCell($col . '1')->getValue();
-                $translation = $sheet->getCell($col . $row)->getValue();
-
-                // If the language array doesn't exist, create it
-                if (!isset($data[$language])) {
-                    $data[$language] = [];
-                }
-
-                // Set the translation for the corresponding language and key
-                $data[$language][$key] = $translation;
-            }
-        }
-
-        return $data;
+    public function parseFiles()
+    {
+        return $this->repository->all();
     }
 
-    public function get($key, $locale = null) {
-        $locale = $locale ?: config('app.locale');
+    public function parseFile ($filePath)
+    {
+        $parser = app(FileParserInterface::class);
+        return $parser->parse($filePath);
+    }
 
-        [$file, $key] = explode(".", $key, 2);
+    public function get($key, $replace = [], $locale = null)
+    {
+        return $this->repository->get($key, $replace, $locale);
+    }
 
-        if (!isset($this->data[$file])) {
-            throw new FileNotFoundException($file);
-        }
+    public function clearCache()
+    {
+        $this->repository->refresh();
+    }
 
-        if (!isset($this->data[$file][$locale])) {
-            throw new LocaleNotFoundException($locale);
-        }
-
-        if (!isset($this->data[$file][$locale][$key])) {
-            throw new TranslationKeyNotFoundException($key);
-        }
-
-        return $this->data[$file][$locale][$key];
+    public function refresh()
+    {
+        $this->repository->refresh();
     }
 
 }
